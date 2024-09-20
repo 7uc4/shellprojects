@@ -1,68 +1,67 @@
 #!/bin/bash
 #
 # This script creates a new user on the local system.
-# You will be prompted to enter the username (login), the person or application name, and a generic password. The user will be forced to change the password on the first login.
-# The username, password, and host for the account will be displayed at the end.
-# The script can not be executed without superuser privileges.
+# You must supply a username as an argument to the script.
+# Optionally, you can also provide a comment for the account as an argument.
+# A password will be automatically generated for the account.
+# The username, password, and host for the account will be displayed.
 
+# Make sure the script is being executed with superuser privileges.
 if [[ "${UID}" -ne 0 ]]
 then
-   echo 'Please run with sudo or as root.'
+   echo 'Please run with sudo or as root.' >&2
    exit 1
 fi
 
-# Get the username (login).
-read -p 'Enter the username: ' USER_NAME
-
-# Validate username
-if [[ -z "${USER_NAME}" ]]
+# If the user doesn't supply at least one argument, then give them help.
+if [[ "${#}" -lt 1 ]]
 then
-   echo 'Username cannot be empty.'
-   exit 1
+  echo "Usage: ${0} USER_NAME [COMMENT]..." >&2
+  echo 'Create an account on the local system with the name of USER_NAME and a comments field of COMMENT.' >&2
+  exit 1
 fi
 
-# Get the real name (contents for the description field).
-read -p 'Enter the name of the person or application that will be using this account: ' COMMENT
+# The first parameter is the user name
+USER_NAME="${1}"
 
-# Get the password. Password will be changed on first login.
-read -p 'Enter the password to use for the account: ' PASSWORD
+# The rest of the parameters are for the account comments.
+shift
+COMMENT="${@}"
 
-# Validate password
-if [[ -z "${PASSWORD}" ]]
-then
-   echo 'Password cannot be empty.'
-   exit 1
-fi
+# Generate a password.
+PASSWORD=$(date +%s%N | sha256sum | head -c32)
 
-# Create the account.
-useradd -c "${COMMENT}" -m ${USER_NAME}
+# Create the user with the password.
+useradd -c "${COMMENT}" -m ${USER_NAME} &> /dev/null
 
-# Verify account creation.
+# Check to see if the useradd command succeeded.
+# We don't want to tell the user that an account was created when it hasn't been.
 if [[ "${?}" -ne 0 ]]
 then
-  echo 'The account could not be created.'
+  echo 'The account could not be created.' >&2
   exit 1
 fi
 
 # Set the password.
-echo "${USER_NAME}:${PASSWORD}" | chpasswd
+echo ${PASSWORD} | passwd --stdin ${USER_NAME} &> /dev/null
 
-# Check to see if the chpasswd command succeeded.
+# Check to see if the passwd command succeeded.
 if [[ "${?}" -ne 0 ]]
 then
-  echo 'The password for the account could not be set.'
+  echo 'The password for the account could not be set.' >&2
   exit 1
 fi
 
 # Force password change on first login.
-passwd -e ${USER_NAME}
+passwd -e ${USER_NAME} &> /dev/null
 
 # Display the username, password, and the host where the user was created.
-echo
 echo 'username:'
 echo "${USER_NAME}"
+echo
 echo 'password:'
 echo "${PASSWORD}"
+echo
 echo 'host:'
 echo "${HOSTNAME}"
 exit 0
